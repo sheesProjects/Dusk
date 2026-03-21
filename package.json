@@ -1,0 +1,52 @@
+{
+  "name": "desktop-countdown-widget",
+  "productName": "Desktop Countdown Widget",
+  "version": "1.0.0",
+  "description": "A Windows 10 desktop countdown widget built with Electron, React, and TypeScript.",
+  "main": ".vite/build/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "electron",
+    "countdown",
+    "widget",
+    "react",
+    "windows"
+  ],
+  "author": {
+    "name": "Shees ur Rehman"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@electron-forge/cli": "^7.11.1",
+    "@electron-forge/maker-squirrel": "^7.11.1",
+    "@electron-forge/maker-zip": "^7.11.1",
+    "@electron-forge/plugin-fuses": "^7.11.1",
+    "@electron-forge/plugin-vite": "^7.11.1",
+    "@electron/fuses": "^1.8.0",
+    "@types/electron-squirrel-startup": "^1.0.2",
+    "@types/node": "^24.6.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.0.4",
+    "electron": "^41.0.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.7",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.2.6",
+    "@fontsource/plus-jakarta-sans": "^5.2.8",
+    "@fontsource/space-grotesk": "^5.2.10",
+    "electron-squirrel-startup": "^1.0.1",
+    "electron-store": "^11.0.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  }
+}
