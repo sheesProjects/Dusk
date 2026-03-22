@@ -75,7 +75,23 @@ function ScrubCard({
 }: ScrubCardProps) {
   const dragStateRef = useRef<{ pointerId: number; clientY: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const elementRef = useRef<HTMLDivElement>(null);
+  const onStepRef = useRef(onStep);
+  onStepRef.current = onStep;
   const stepSizePx = 28;
+
+  useEffect(() => {
+    const el = elementRef.current;
+    if (!el) return;
+
+    function handleWheel(event: WheelEvent) {
+      event.preventDefault();
+      onStepRef.current(event.deltaY > 0 ? 1 : -1);
+    }
+
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, []);
 
   function finishDrag(event: React.PointerEvent<HTMLDivElement>) {
     if (dragStateRef.current?.pointerId === event.pointerId) {
@@ -138,10 +154,7 @@ function ScrubCard({
         }
       }}
       onPointerUp={finishDrag}
-      onWheel={(event) => {
-        event.preventDefault();
-        onStep(event.deltaY > 0 ? 1 : -1);
-      }}
+      ref={elementRef}
       role="spinbutton"
       tabIndex={0}
     >
@@ -382,6 +395,7 @@ export function App() {
   const [todoDraft, setTodoDraft] = useState('');
   const [todoError, setTodoError] = useState<string | null>(null);
   const [isTodoBusy, setIsTodoBusy] = useState(false);
+  const todoBusyRef = useRef(0);
   const [draggedTodoId, setDraggedTodoId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; position: TodoDropPosition } | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -637,7 +651,25 @@ export function App() {
 
   async function handleReset() {
     setError(null);
-    await window.countdownWidget.reset();
+
+    try {
+      await window.countdownWidget.reset();
+    } catch {
+      setError('Unable to reset the countdown.');
+    }
+  }
+
+  function startTodoBusy() {
+    todoBusyRef.current += 1;
+    setIsTodoBusy(true);
+  }
+
+  function endTodoBusy() {
+    todoBusyRef.current = Math.max(0, todoBusyRef.current - 1);
+
+    if (todoBusyRef.current === 0) {
+      setIsTodoBusy(false);
+    }
   }
 
   async function handleTodoSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -647,7 +679,7 @@ export function App() {
       return;
     }
 
-    setIsTodoBusy(true);
+    startTodoBusy();
     setTodoError(null);
 
     try {
@@ -661,12 +693,12 @@ export function App() {
           : 'Unable to add the task.',
       );
     } finally {
-      setIsTodoBusy(false);
+      endTodoBusy();
     }
   }
 
   async function handleTodoToggle(id: string) {
-    setIsTodoBusy(true);
+    startTodoBusy();
     setTodoError(null);
 
     try {
@@ -678,7 +710,7 @@ export function App() {
           : 'Unable to update the task.',
       );
     } finally {
-      setIsTodoBusy(false);
+      endTodoBusy();
     }
   }
 
@@ -686,7 +718,7 @@ export function App() {
     const previousTodos = todos;
 
     setTodos(nextTodos);
-    setIsTodoBusy(true);
+    startTodoBusy();
     setTodoError(null);
 
     try {
@@ -699,14 +731,14 @@ export function App() {
           : 'Unable to reorder the task.',
       );
     } finally {
-      setIsTodoBusy(false);
+      endTodoBusy();
       setDraggedTodoId(null);
       setDropTarget(null);
     }
   }
 
   async function handleTodoRemove(id: string) {
-    setIsTodoBusy(true);
+    startTodoBusy();
     setTodoError(null);
 
     try {
@@ -718,7 +750,7 @@ export function App() {
           : 'Unable to remove the task.',
       );
     } finally {
-      setIsTodoBusy(false);
+      endTodoBusy();
     }
   }
 
@@ -844,6 +876,11 @@ export function App() {
                       dropTarget?.id === task.id ? `is-drop-${dropTarget.position}` : '',
                     ].filter(Boolean).join(' ')}
                     key={task.id}
+                    onDragLeave={(event) => {
+                      if (dropTarget?.id === task.id && !event.currentTarget.contains(event.relatedTarget as Node)) {
+                        setDropTarget(null);
+                      }
+                    }}
                     onDragOver={(event) => handleTodoDragOver(task.id, event)}
                     onDrop={(event) => void handleTodoDrop(task.id, event)}
                   >

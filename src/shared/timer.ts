@@ -1,15 +1,9 @@
 import type {
   CountdownStartPayload,
   CountdownState,
-  SizePreset,
 } from './contracts';
 
-export const SIZE_PRESETS: Record<SizePreset, { width: number; height: number }> =
-  {
-    compact: { width: 980, height: 700 },
-    regular: { width: 980, height: 700 },
-    expanded: { width: 980, height: 700 },
-  };
+export const WINDOW_SIZE = { width: 980, height: 700 };
 
 const MS_PER_SECOND = 1000;
 const MS_PER_MINUTE = 60 * MS_PER_SECOND;
@@ -17,10 +11,6 @@ const MS_PER_HOUR = 60 * MS_PER_MINUTE;
 const MAX_TIMER_DELAY = 2_147_483_647;
 
 export const TIMER_COMPLETION_BODY = 'Time is up.';
-
-export function isSizePreset(value: unknown): value is SizePreset {
-  return value === 'compact' || value === 'regular' || value === 'expanded';
-}
 
 function isValidTimerMode(mode: string): mode is CountdownState['mode'] {
   return mode === 'duration' || mode === 'datetime';

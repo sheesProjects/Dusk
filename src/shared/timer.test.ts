@@ -6,7 +6,6 @@ import {
   getCountdownMetrics,
   getTimerDelayMs,
   hydrateStoredCountdownState,
-  isSizePreset,
   isValidStartPayload,
 } from './timer';
 import type { CountdownState } from './contracts';
@@ -126,8 +125,4 @@ describe('timer helpers', () => {
     ).toBe(false);
   });
 
-  it('accepts only known size presets', () => {
-    expect(isSizePreset('regular')).toBe(true);
-    expect(isSizePreset('invalid')).toBe(false);
-  });
 });

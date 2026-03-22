@@ -16,14 +16,12 @@ import started from 'electron-squirrel-startup';
 import type {
   CountdownStartPayload,
   CountdownState,
-  SizePreset,
   TodoTask,
   WindowPrefs,
 } from '../shared/contracts';
 import {
-  SIZE_PRESETS,
+  WINDOW_SIZE,
   getNotificationBody,
-  isSizePreset,
   getTimerDelayMs,
   hydrateStoredCountdownState,
   isValidStartPayload,
@@ -37,7 +35,6 @@ import {
 
 const APP_ID = 'com.shees.desktop-countdown-widget';
 const TIMER_STATE_CHANNEL = 'timer:state-changed';
-const EDITOR_WINDOW_SIZE = SIZE_PRESETS.regular;
 const WINDOW_CORNER_RADIUS = 36;
 const COMPLETION_HEARTBEAT_MS = 1_000;
 
@@ -138,16 +135,14 @@ function fitSizeToArea(size: { width: number; height: number }, area: Electron.R
   };
 }
 
-function getDesiredWindowSize(size: SizePreset, editing: boolean, area: Electron.Rectangle) {
-  const desired = editing ? EDITOR_WINDOW_SIZE : SIZE_PRESETS[size];
-
-  return fitSizeToArea(desired, area);
+function getDesiredWindowSize(area: Electron.Rectangle) {
+  return fitSizeToArea(WINDOW_SIZE, area);
 }
 
-function getWindowBounds(prefs: WindowPrefs, editing: boolean) {
+function getWindowBounds(prefs: WindowPrefs) {
   const display = getDisplayForPoint(prefs.x, prefs.y);
   const area = display.workArea;
-  const size = getDesiredWindowSize(prefs.size, editing, area);
+  const size = getDesiredWindowSize(area);
   const x = Math.min(Math.max(prefs.x, area.x), area.x + area.width - size.width);
   const y = Math.min(Math.max(prefs.y, area.y), area.y + area.height - size.height);
 
@@ -201,52 +196,30 @@ function applyWindowShape() {
   mainWindow.setShape(createRoundedWindowShape(width, height, WINDOW_CORNER_RADIUS));
 }
 
-function applyPinnedWindowLevel() {
-  if (!mainWindow) {
-    return;
-  }
-
-  mainWindow.setAlwaysOnTop(false);
-}
-
-function getDefaultWindowPrefs(size: SizePreset): WindowPrefs {
+function getDefaultWindowPrefs(): WindowPrefs {
   const display = screen.getPrimaryDisplay();
-  const preset = getDesiredWindowSize(size, false, display.workArea);
+  const windowSize = getDesiredWindowSize(display.workArea);
   const margin = 28;
-  const x = display.workArea.x + display.workArea.width - preset.width - margin;
+  const x = display.workArea.x + display.workArea.width - windowSize.width - margin;
   const y = display.workArea.y + margin;
 
-  return { size, x, y, alwaysOnTop: false };
+  return { x, y };
 }
 
 function clampWindowPrefs(prefs: unknown): WindowPrefs {
   const candidate = typeof prefs === 'object' && prefs !== null
     ? prefs as Partial<WindowPrefs>
     : null;
-  const size = isSizePreset(candidate?.size) ? candidate.size : 'regular';
   const x = candidate?.x;
   const y = candidate?.y;
 
   if (typeof x !== 'number' || !Number.isFinite(x) || typeof y !== 'number' || !Number.isFinite(y)) {
-    return getDefaultWindowPrefs(size);
+    return getDefaultWindowPrefs();
   }
 
-  const bounds = getWindowBounds(
-    {
-      size,
-      x,
-      y,
-      alwaysOnTop: false,
-    },
-    false,
-  );
+  const bounds = getWindowBounds({ x, y });
 
-  return {
-    size,
-    x: bounds.x,
-    y: bounds.y,
-    alwaysOnTop: false,
-  };
+  return { x: bounds.x, y: bounds.y };
 }
 
 function getStoredWindowPrefs(): WindowPrefs {
@@ -261,38 +234,25 @@ function persistWindowPrefs() {
   }
 
   const [x, y] = mainWindow.getPosition();
-  const current = getStoredWindowPrefs();
-  const next: WindowPrefs = {
-    size: current.size,
-    x,
-    y,
-    alwaysOnTop: false,
-  };
-
-  store.set('windowPrefs', clampWindowPrefs(next));
+  store.set('windowPrefs', clampWindowPrefs({ x, y }));
 }
 
-function applyWindowBounds(editing: boolean) {
+function applyWindowBounds() {
   if (!mainWindow) {
     return;
   }
 
   const currentPrefs = getStoredWindowPrefs();
-  const bounds = getWindowBounds(currentPrefs, editing);
+  const bounds = getWindowBounds(currentPrefs);
 
   mainWindow.setBounds(bounds);
   applyWindowShape();
-  store.set('windowPrefs', {
-    ...currentPrefs,
-    x: bounds.x,
-    y: bounds.y,
-    alwaysOnTop: false,
-  });
+  store.set('windowPrefs', { x: bounds.x, y: bounds.y });
 }
 
 function applyEditingMode(editing: boolean) {
   isEditingWindow = editing;
-  applyWindowBounds(editing);
+  applyWindowBounds();
 }
 
 function showWindow() {
@@ -301,7 +261,6 @@ function showWindow() {
   }
 
   applyWindowShape();
-  applyPinnedWindowLevel();
 
   if (!mainWindow.isVisible()) {
     mainWindow.show();
@@ -319,7 +278,6 @@ function hideWindow() {
     return;
   }
 
-  mainWindow.setAlwaysOnTop(false);
   mainWindow.hide();
 }
 
@@ -499,7 +457,7 @@ function loadRenderer(window: BrowserWindow) {
 function createMainWindow() {
   isEditingWindow = !getCurrentCountdownState();
   const prefs = getStoredWindowPrefs();
-  const bounds = getWindowBounds(prefs, isEditingWindow);
+  const bounds = getWindowBounds(prefs);
 
   mainWindow = new BrowserWindow({
     x: bounds.x,
@@ -531,17 +489,12 @@ function createMainWindow() {
 
   mainWindow.on('ready-to-show', () => {
     applyWindowShape();
-    applyPinnedWindowLevel();
     mainWindow?.show();
     broadcastTimerState();
   });
 
   mainWindow.on('moved', persistWindowPrefs);
-  mainWindow.on('move', persistWindowPrefs);
-  mainWindow.on('show', () => {
-    applyWindowShape();
-    applyPinnedWindowLevel();
-  });
+  mainWindow.on('show', applyWindowShape);
 
   mainWindow.on('close', (event) => {
     if (isQuitting) {

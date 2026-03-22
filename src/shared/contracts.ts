@@ -1,5 +1,4 @@
 export type TimerMode = 'duration' | 'datetime';
-export type SizePreset = 'compact' | 'regular' | 'expanded';
 
 export interface CountdownState {
   label?: string;
@@ -24,10 +23,8 @@ export interface CountdownStartPayload {
 }
 
 export interface WindowPrefs {
-  size: SizePreset;
   x: number;
   y: number;
-  alwaysOnTop: boolean;
 }
 
 export interface CountdownWidgetApi {
