@@ -8,6 +8,7 @@ import {
   screen,
   Tray,
 } from 'electron';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import Store from 'electron-store';
 import started from 'electron-squirrel-startup';
@@ -16,6 +17,7 @@ import type {
   CountdownStartPayload,
   CountdownState,
   SizePreset,
+  TodoTask,
   WindowPrefs,
 } from '../shared/contracts';
 import {
@@ -26,6 +28,12 @@ import {
   hydrateStoredCountdownState,
   isValidStartPayload,
 } from '../shared/timer';
+import {
+  MAX_TODO_ITEMS,
+  createTodoTask,
+  hydrateStoredTodos,
+  reorderTodoTasks,
+} from '../shared/todo';
 
 const APP_ID = 'com.shees.desktop-countdown-widget';
 const TIMER_STATE_CHANNEL = 'timer:state-changed';
@@ -35,12 +43,14 @@ const COMPLETION_HEARTBEAT_MS = 1_000;
 
 type StoreShape = {
   countdown: CountdownState | null;
+  todos?: TodoTask[];
   windowPrefs?: WindowPrefs;
 };
 
 const store = new Store<StoreShape>({
   defaults: {
     countdown: null,
+    todos: [],
   },
 });
 
@@ -95,6 +105,18 @@ function getCurrentCountdownState() {
 
 function broadcastTimerState() {
   mainWindow?.webContents.send(TIMER_STATE_CHANNEL, getCurrentCountdownState());
+}
+
+function getStoredTodos() {
+  const normalized = hydrateStoredTodos(store.get('todos'));
+  store.set('todos', normalized);
+  return normalized;
+}
+
+function saveTodos(todos: TodoTask[]) {
+  const normalized = hydrateStoredTodos(todos);
+  store.set('todos', normalized);
+  return normalized;
 }
 
 function getDisplayForPoint(x: number, y: number) {
@@ -537,6 +559,7 @@ function createMainWindow() {
 
 function registerIpcHandlers() {
   ipcMain.handle('timer:getState', async () => getCurrentCountdownState());
+  ipcMain.handle('todo:getAll', async () => getStoredTodos());
 
   ipcMain.handle('timer:start', async (_event, payload: CountdownStartPayload) => {
     if (!isValidStartPayload(payload)) {
@@ -570,6 +593,57 @@ function registerIpcHandlers() {
     clearCompletionMonitors();
     store.set('countdown', null);
     broadcastTimerState();
+  });
+
+  ipcMain.handle('todo:add', async (_event, title: unknown) => {
+    const current = getStoredTodos();
+
+    if (current.length >= MAX_TODO_ITEMS) {
+      throw new Error('Only 3 tasks allowed.');
+    }
+
+    const nextTask = createTodoTask(title, randomUUID());
+
+    if (!nextTask) {
+      throw new Error('Enter a task first.');
+    }
+
+    return saveTodos([...current, nextTask]);
+  });
+
+  ipcMain.handle('todo:reorder', async (_event, orderedIds: unknown) => {
+    if (!Array.isArray(orderedIds) || !orderedIds.every((id) => typeof id === 'string')) {
+      throw new Error('Invalid task order.');
+    }
+
+    return saveTodos(reorderTodoTasks(getStoredTodos(), orderedIds));
+  });
+
+  ipcMain.handle('todo:toggle', async (_event, id: unknown) => {
+    if (typeof id !== 'string') {
+      throw new Error('Invalid task.');
+    }
+
+    const current = getStoredTodos();
+
+    return saveTodos(
+      current.map((task) => (
+        task.id === id
+          ? {
+              ...task,
+              completed: !task.completed,
+            }
+          : task
+      )),
+    );
+  });
+
+  ipcMain.handle('todo:remove', async (_event, id: unknown) => {
+    if (typeof id !== 'string') {
+      throw new Error('Invalid task.');
+    }
+
+    return saveTodos(getStoredTodos().filter((task) => task.id !== id));
   });
 
   ipcMain.handle('window:setEditingMode', async (_event, isEditing: boolean) => {

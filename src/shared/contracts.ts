@@ -10,6 +10,12 @@ export interface CountdownState {
   completed: boolean;
 }
 
+export interface TodoTask {
+  id: string;
+  title: string;
+  completed: boolean;
+}
+
 export interface CountdownStartPayload {
   label?: string;
   mode: TimerMode;
@@ -26,8 +32,13 @@ export interface WindowPrefs {
 
 export interface CountdownWidgetApi {
   getState: () => Promise<CountdownState | null>;
+  getTodos: () => Promise<TodoTask[]>;
   start: (payload: CountdownStartPayload) => Promise<CountdownState>;
   reset: () => Promise<void>;
+  addTodo: (title: string) => Promise<TodoTask[]>;
+  reorderTodos: (orderedIds: string[]) => Promise<TodoTask[]>;
+  toggleTodo: (id: string) => Promise<TodoTask[]>;
+  removeTodo: (id: string) => Promise<TodoTask[]>;
   setEditingMode: (isEditing: boolean) => Promise<void>;
   minimizeToTray: () => Promise<void>;
   restore: () => Promise<void>;

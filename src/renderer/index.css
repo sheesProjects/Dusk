@@ -10,9 +10,9 @@
   --surface-overlay: rgba(33, 30, 28, 0.78);
   --on-surface: #e5e2e1;
   --on-surface-muted: #b8b0ab;
-  --primary: #ffe2ab;
-  --primary-container: #ffbf00;
-  --primary-fixed: rgba(255, 226, 171, 0.12);
+  --primary: #ffd700;
+  --primary-container: #ffd700;
+  --primary-fixed: rgba(255, 215, 0, 0.12);
   --tertiary: #b4efff;
   --danger: #ffb9a8;
   --ghost-outline: rgba(229, 226, 225, 0.15);
@@ -179,8 +179,8 @@ input::placeholder {
 
 .action-pill-primary {
   color: #231600;
-  background: linear-gradient(135deg, #ffe0a9, #ffd053);
-  box-shadow: 0 8px 18px rgba(255, 191, 0, 0.1);
+  background: var(--primary);
+  box-shadow: 0 8px 18px rgba(255, 215, 0, 0.12);
 }
 
 .action-pill-secondary {
@@ -198,6 +198,13 @@ input::placeholder {
   grid-template-columns: minmax(0, 1.52fr) 15.75rem;
   gap: 1rem;
   flex: 1;
+  min-height: 0;
+}
+
+.main-stack {
+  display: grid;
+  grid-template-rows: minmax(11rem, auto) minmax(0, 1fr);
+  gap: 1rem;
   min-height: 0;
 }
 
@@ -245,7 +252,7 @@ input::placeholder {
   line-height: 0.88;
   letter-spacing: -0.2rem;
   color: var(--primary);
-  text-shadow: 0 0 28px rgba(255, 226, 171, 0.14);
+  text-shadow: 0 0 28px rgba(255, 215, 0, 0.14);
 }
 
 .stat-card strong {
@@ -288,15 +295,15 @@ input::placeholder {
   background:
     conic-gradient(
       from 220deg,
-      #ffc83b 0,
-      #ffe0a8 var(--progress),
+      #ffd700 0,
+      #ffe46b var(--progress),
       rgba(90, 83, 76, 0.42) var(--progress),
       rgba(90, 83, 76, 0.42) 100%
     );
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.03),
     0 14px 30px rgba(0, 0, 0, 0.2),
-    0 0 18px rgba(255, 226, 171, 0.05);
+    0 0 18px rgba(255, 215, 0, 0.06);
 }
 
 .progress-dial::before {
@@ -350,7 +357,7 @@ input::placeholder {
 }
 
 .stat-card-cool {
-  background: #2d3438;
+  background: #3b3531;
 }
 
 .stat-card-wide {
@@ -360,6 +367,285 @@ input::placeholder {
 .stat-card-wide strong {
   font-size: 0.97rem;
   line-height: 1.45;
+}
+
+.todo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+  min-height: 0;
+  padding: 1.1rem 1rem 1rem 1.2rem;
+  border-radius: 1.9rem;
+  background: #232120;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.todo-card-panel {
+  background: #201f1f;
+}
+
+.todo-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.todo-count {
+  color: var(--primary);
+  font-size: 0.92rem;
+}
+
+.todo-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+}
+
+.todo-input-shell {
+  padding: 0.86rem 1rem 0.92rem;
+  border-radius: 1.45rem 1.45rem 1.18rem 1.18rem;
+  background: rgba(59, 54, 50, 0.9);
+}
+
+.todo-input-shell input {
+  font-size: 1rem;
+}
+
+.todo-add,
+.todo-remove,
+.todo-toggle,
+.todo-grip {
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    filter 140ms ease,
+    opacity 140ms ease,
+    background 140ms ease;
+}
+
+.todo-add {
+  min-width: 4.6rem;
+  padding: 0.82rem 1.05rem;
+  border-radius: 999px;
+  color: #241700;
+  background: var(--primary);
+}
+
+.todo-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.8rem;
+  min-height: 0;
+  justify-content: flex-start;
+}
+
+.todo-card.is-full .todo-list,
+.todo-list.is-full {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 0.9rem;
+  padding-block: 0.08rem 0.14rem;
+}
+
+.todo-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 1rem;
+  min-height: 4.85rem;
+  padding: 0.95rem 1rem 0.95rem 0.9rem;
+  border-radius: 1.5rem;
+  background: rgba(43, 40, 39, 0.82);
+  transition:
+    background 140ms ease,
+    transform 140ms ease,
+    opacity 140ms ease;
+}
+
+.todo-card.is-full .todo-item,
+.todo-list.is-full .todo-item {
+  min-height: 0;
+  height: 100%;
+}
+
+.todo-item::before,
+.todo-item::after {
+  content: '';
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  height: 0.22rem;
+  border-radius: 999px;
+  background: rgba(255, 215, 0, 0.28);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.todo-item::before {
+  top: 0.42rem;
+}
+
+.todo-item::after {
+  bottom: 0.42rem;
+}
+
+.todo-item.is-dragging {
+  opacity: 0.48;
+}
+
+.todo-item.is-drop-before::before,
+.todo-item.is-drop-after::after {
+  opacity: 1;
+}
+
+.todo-item.priority-1 {
+  background: rgba(56, 49, 42, 0.92);
+}
+
+.todo-item.priority-2 {
+  background: rgba(49, 44, 41, 0.86);
+}
+
+.todo-item.priority-3 {
+  background: rgba(43, 40, 39, 0.8);
+}
+
+.todo-grip {
+  position: relative;
+  width: 1.25rem;
+  height: 2.3rem;
+  border-radius: 999px;
+  opacity: 0.58;
+}
+
+.todo-grip::before {
+  content: '';
+  position: absolute;
+  inset: 0.35rem 0.24rem;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, rgba(184, 176, 171, 0.7) 0 1.45px, transparent 1.7px) center / 0.42rem 0.42rem;
+}
+
+.todo-item.priority-1 .todo-grip::before {
+  background:
+    radial-gradient(circle, rgba(255, 215, 0, 0.88) 0 1.45px, transparent 1.7px) center / 0.42rem 0.42rem;
+}
+
+.todo-item.priority-2 .todo-grip::before {
+  background:
+    radial-gradient(circle, rgba(222, 202, 158, 0.72) 0 1.45px, transparent 1.7px) center / 0.42rem 0.42rem;
+}
+
+.todo-item.is-dragging .todo-grip,
+.todo-grip:active {
+  cursor: grabbing;
+}
+
+.todo-toggle {
+  display: grid;
+  place-items: center;
+  width: 1.95rem;
+  height: 1.95rem;
+  border-radius: 0.68rem;
+  background: rgba(24, 23, 23, 0.95);
+  box-shadow: inset 0 0 0 1px rgba(229, 226, 225, 0.14);
+}
+
+.todo-toggle span {
+  width: 0.45rem;
+  height: 0.88rem;
+  border-right: 0.15rem solid transparent;
+  border-bottom: 0.15rem solid transparent;
+  transform: rotate(45deg) translate(-0.02rem, -0.08rem);
+  opacity: 0;
+  transition:
+    opacity 140ms ease,
+    border-color 140ms ease;
+}
+
+.todo-toggle.is-complete {
+  background: var(--primary);
+  box-shadow: 0 8px 18px rgba(255, 215, 0, 0.12);
+}
+
+.todo-toggle.is-complete span {
+  opacity: 1;
+  border-right-color: #261800;
+  border-bottom-color: #261800;
+}
+
+.todo-title {
+  min-width: 0;
+  color: rgba(245, 241, 239, 0.96);
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.todo-item.is-complete .todo-title {
+  color: var(--on-surface-muted);
+  text-decoration: line-through;
+  text-decoration-color: rgba(184, 176, 171, 0.5);
+}
+
+.todo-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 999px;
+  color: var(--on-surface-muted);
+  background: rgba(58, 53, 50, 0.8);
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.todo-remove-icon {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.todo-empty,
+.todo-error {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.todo-empty {
+  display: grid;
+  align-items: start;
+  padding: 1rem 1.05rem;
+  color: var(--on-surface-muted);
+  border-radius: 1.4rem;
+  background: rgba(43, 40, 39, 0.76);
+}
+
+.todo-error {
+  color: var(--danger);
+}
+
+.todo-add:disabled,
+.todo-remove:disabled,
+.todo-toggle:disabled {
+  cursor: default;
+  opacity: 0.38;
 }
 
 .editor-layer {
@@ -470,7 +756,7 @@ input::placeholder {
 .mode-toggle button.is-selected,
 .period-toggle button.is-selected {
   color: var(--primary);
-  background: rgba(255, 191, 0, 0.22);
+  background: rgba(255, 215, 0, 0.22);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
@@ -523,7 +809,7 @@ input::placeholder {
 }
 
 .scrub-card-cool {
-  background: #2d3438;
+  background: #3b3531;
 }
 
 .scrub-track {
@@ -573,8 +859,26 @@ input::placeholder {
 }
 
 .preview-card {
+  position: relative;
   min-height: 8.75rem;
-  background: #443d37;
+  overflow: hidden;
+  background: #484039;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    inset 0 18px 26px rgba(255, 215, 0, 0.025);
+}
+
+.preview-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top right, rgba(255, 215, 0, 0.06), transparent 58%);
+  pointer-events: none;
+}
+
+.preview-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .preview-card h3 {
@@ -595,6 +899,10 @@ input::placeholder {
 .preview-card.is-error {
   background: #3b231d;
   box-shadow: none;
+}
+
+.preview-card.is-error::before {
+  content: none;
 }
 
 .preview-card.is-error h3 {
@@ -627,14 +935,31 @@ input::placeholder {
 .action-pill:hover,
 .mode-toggle button:hover,
 .period-toggle button:hover,
-.preset-chip:hover {
+.preset-chip:hover,
+.todo-add:hover,
+.todo-remove:hover,
+.todo-toggle:hover,
+.todo-grip:hover {
   transform: translateY(-1px);
   filter: brightness(1.04);
 }
 
+.todo-item:hover {
+  background: var(--primary-fixed);
+}
+
+.todo-item:hover .todo-remove,
+.todo-remove:hover,
+.todo-item:hover .todo-grip,
+.todo-grip:hover {
+  color: var(--primary);
+  background: rgba(255, 215, 0, 0.12);
+  opacity: 1;
+}
+
 .is-complete .hero-digits,
 .is-complete .progress-core strong {
-  color: #ffdc87;
+  color: var(--primary);
 }
 
 @media (max-width: 920px) {
@@ -677,6 +1002,10 @@ input::placeholder {
 
   .widget-grid {
     grid-template-columns: 1fr;
+  }
+
+  .main-stack {
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 
   .insight-panel {

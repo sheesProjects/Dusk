@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import type { CountdownState, TimerMode } from '../shared/contracts';
+import type { CountdownState, TimerMode, TodoTask } from '../shared/contracts';
 import {
   buildDurationPayload,
   formatCountdown,
@@ -28,6 +28,8 @@ type PreviewState = {
   title: string;
   detail: string;
 };
+
+type TodoDropPosition = 'before' | 'after';
 
 type ScrubCardProps = {
   label: string;
@@ -344,12 +346,44 @@ function toDurationParts(totalMinutes: number) {
   };
 }
 
+function reorderTodosForDrop(
+  tasks: TodoTask[],
+  draggedId: string,
+  targetId: string,
+  position: TodoDropPosition,
+) {
+  const draggedIndex = tasks.findIndex((task) => task.id === draggedId);
+  const targetIndex = tasks.findIndex((task) => task.id === targetId);
+
+  if (draggedIndex === -1 || targetIndex === -1 || draggedId === targetId) {
+    return tasks;
+  }
+
+  const next = [...tasks];
+  const [draggedTask] = next.splice(draggedIndex, 1);
+  const insertionIndex = position === 'before'
+    ? targetIndex
+    : targetIndex + 1;
+  const adjustedIndex = draggedIndex < insertionIndex
+    ? insertionIndex - 1
+    : insertionIndex;
+
+  next.splice(adjustedIndex, 0, draggedTask);
+  return next;
+}
+
 export function App() {
   const [countdown, setCountdown] = useState<CountdownState | null>(null);
+  const [todos, setTodos] = useState<TodoTask[]>([]);
   const [hasLoadedState, setHasLoadedState] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [todoDraft, setTodoDraft] = useState('');
+  const [todoError, setTodoError] = useState<string | null>(null);
+  const [isTodoBusy, setIsTodoBusy] = useState(false);
+  const [draggedTodoId, setDraggedTodoId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; position: TodoDropPosition } | null>(null);
   const [now, setNow] = useState(Date.now());
   const [form, setForm] = useState<FormState>(() => buildFormState(null));
   const isEditingRef = useRef(isEditing);
@@ -361,12 +395,16 @@ export function App() {
   useEffect(() => {
     let isMounted = true;
 
-    void window.countdownWidget.getState().then((state) => {
+    void Promise.all([
+      window.countdownWidget.getState(),
+      window.countdownWidget.getTodos(),
+    ]).then(([state, nextTodos]) => {
       if (!isMounted) {
         return;
       }
 
       setCountdown(state);
+      setTodos(nextTodos);
       setForm(buildFormState(state));
       setIsEditing(!state);
       setHasLoadedState(true);
@@ -494,6 +532,8 @@ export function App() {
   const nextHourLabel = `${nextHourDate.getHours() % 12 || 12}`.padStart(2, '0');
   const previousMinuteLabel = `${shiftExactDate(form, 'minute', -1).getMinutes()}`.padStart(2, '0');
   const nextMinuteLabel = `${shiftExactDate(form, 'minute', 1).getMinutes()}`.padStart(2, '0');
+  const hasReachedTodoLimit = todos.length >= 3;
+  const canAddTodo = todoDraft.trim().length > 0 && !hasReachedTodoLimit && !isTodoBusy;
 
   function closeEditor() {
     setIsEditing(false);
@@ -600,6 +640,143 @@ export function App() {
     await window.countdownWidget.reset();
   }
 
+  async function handleTodoSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canAddTodo) {
+      return;
+    }
+
+    setIsTodoBusy(true);
+    setTodoError(null);
+
+    try {
+      const nextTodos = await window.countdownWidget.addTodo(todoDraft);
+      setTodos(nextTodos);
+      setTodoDraft('');
+    } catch (submitError) {
+      setTodoError(
+        submitError instanceof Error
+          ? submitError.message
+          : 'Unable to add the task.',
+      );
+    } finally {
+      setIsTodoBusy(false);
+    }
+  }
+
+  async function handleTodoToggle(id: string) {
+    setIsTodoBusy(true);
+    setTodoError(null);
+
+    try {
+      setTodos(await window.countdownWidget.toggleTodo(id));
+    } catch (toggleError) {
+      setTodoError(
+        toggleError instanceof Error
+          ? toggleError.message
+          : 'Unable to update the task.',
+      );
+    } finally {
+      setIsTodoBusy(false);
+    }
+  }
+
+  async function persistTodoOrder(nextTodos: TodoTask[]) {
+    const previousTodos = todos;
+
+    setTodos(nextTodos);
+    setIsTodoBusy(true);
+    setTodoError(null);
+
+    try {
+      setTodos(await window.countdownWidget.reorderTodos(nextTodos.map((task) => task.id)));
+    } catch (reorderError) {
+      setTodos(previousTodos);
+      setTodoError(
+        reorderError instanceof Error
+          ? reorderError.message
+          : 'Unable to reorder the task.',
+      );
+    } finally {
+      setIsTodoBusy(false);
+      setDraggedTodoId(null);
+      setDropTarget(null);
+    }
+  }
+
+  async function handleTodoRemove(id: string) {
+    setIsTodoBusy(true);
+    setTodoError(null);
+
+    try {
+      setTodos(await window.countdownWidget.removeTodo(id));
+    } catch (removeError) {
+      setTodoError(
+        removeError instanceof Error
+          ? removeError.message
+          : 'Unable to remove the task.',
+      );
+    } finally {
+      setIsTodoBusy(false);
+    }
+  }
+
+  function handleTodoDragStart(id: string, event: React.DragEvent<HTMLSpanElement>) {
+    if (isTodoBusy) {
+      event.preventDefault();
+      return;
+    }
+
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', id);
+    setDraggedTodoId(id);
+    setDropTarget(null);
+  }
+
+  function handleTodoDragEnd() {
+    setDraggedTodoId(null);
+    setDropTarget(null);
+  }
+
+  function handleTodoDragOver(id: string, event: React.DragEvent<HTMLDivElement>) {
+    if (!draggedTodoId || draggedTodoId === id) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const position: TodoDropPosition = event.clientY < bounds.top + (bounds.height / 2)
+      ? 'before'
+      : 'after';
+
+    setDropTarget({ id, position });
+  }
+
+  async function handleTodoDrop(id: string, event: React.DragEvent<HTMLDivElement>) {
+    if (!draggedTodoId || draggedTodoId === id) {
+      handleTodoDragEnd();
+      return;
+    }
+
+    event.preventDefault();
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const position: TodoDropPosition = event.clientY < bounds.top + (bounds.height / 2)
+      ? 'before'
+      : 'after';
+    const nextTodos = reorderTodosForDrop(todos, draggedTodoId, id, position);
+
+    if (nextTodos === todos) {
+      handleTodoDragEnd();
+      return;
+    }
+
+    await persistTodoOrder(nextTodos);
+  }
+
   return (
     <main className={`widget-shell ${metrics.completed ? 'is-complete' : ''} ${isEditing ? 'is-editing' : ''}`}>
       <div className="ambient-glow ambient-glow-amber" />
@@ -626,10 +803,97 @@ export function App() {
       </header>
 
       <section className="widget-grid">
-        <section className="hero-well hero-well-main">
-          <p className="hero-kicker">Time Left</p>
-          <div className="hero-digits">{formattedCountdown}</div>
-        </section>
+        <div className="main-stack">
+          <section className="hero-well hero-well-main">
+            <p className="hero-kicker">Time Left</p>
+            <div className="hero-digits">{formattedCountdown}</div>
+          </section>
+
+          <section className={`todo-card todo-card-panel ${hasReachedTodoLimit ? 'is-full' : ''}`}>
+            <div className="todo-head">
+              <span className="eyebrow">Tasks</span>
+              <span className="todo-count">{todos.length}/3</span>
+            </div>
+
+            {!hasReachedTodoLimit ? (
+              <form className="todo-form" onSubmit={handleTodoSubmit}>
+                <div className="todo-input-shell">
+                  <input
+                    disabled={isTodoBusy}
+                    maxLength={60}
+                    onChange={(event) => setTodoDraft(event.target.value)}
+                    placeholder="Add a task"
+                    value={todoDraft}
+                  />
+                </div>
+                <button className="todo-add" disabled={!canAddTodo} type="submit">
+                  Add
+                </button>
+              </form>
+            ) : null}
+
+            <div className={`todo-list ${hasReachedTodoLimit ? 'is-full' : ''}`}>
+              {todos.length > 0 ? (
+                todos.map((task, index) => (
+                  <div
+                    className={[
+                      'todo-item',
+                      `priority-${Math.min(index + 1, 3)}`,
+                      task.completed ? 'is-complete' : '',
+                      draggedTodoId === task.id ? 'is-dragging' : '',
+                      dropTarget?.id === task.id ? `is-drop-${dropTarget.position}` : '',
+                    ].filter(Boolean).join(' ')}
+                    key={task.id}
+                    onDragOver={(event) => handleTodoDragOver(task.id, event)}
+                    onDrop={(event) => void handleTodoDrop(task.id, event)}
+                  >
+                    <span
+                      aria-label="Drag to reorder"
+                      className="todo-grip"
+                      draggable={!isTodoBusy}
+                      onDragEnd={handleTodoDragEnd}
+                      onDragStart={(event) => handleTodoDragStart(task.id, event)}
+                    />
+                    <button
+                      aria-label={task.completed ? 'Mark task incomplete' : 'Mark task complete'}
+                      className={`todo-toggle ${task.completed ? 'is-complete' : ''}`}
+                      disabled={isTodoBusy}
+                      onClick={() => void handleTodoToggle(task.id)}
+                      type="button"
+                    >
+                      <span />
+                    </button>
+                    <span className="todo-title">{task.title}</span>
+                    <button
+                      aria-label="Remove task"
+                      className="todo-remove"
+                      disabled={isTodoBusy}
+                      onClick={() => void handleTodoRemove(task.id)}
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        className="todo-remove-icon"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M9.25 4.5H14.75" />
+                        <path d="M5.5 7H18.5" />
+                        <path d="M8 7V17.25C8 18.22 8.78 19 9.75 19H14.25C15.22 19 16 18.22 16 17.25V7" />
+                        <path d="M10.5 10.5V15" />
+                        <path d="M13.5 10.5V15" />
+                      </svg>
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="todo-empty">No tasks yet.</p>
+              )}
+            </div>
+
+            {todoError ? <p className="todo-error">{todoError}</p> : null}
+          </section>
+        </div>
 
         <aside className="insight-panel">
           <div className="progress-dial" style={{ ['--progress' as string]: progressPercent }}>
