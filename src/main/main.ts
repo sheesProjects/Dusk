@@ -17,6 +17,7 @@ import type {
   CountdownStartPayload,
   CountdownState,
   TodoTask,
+  TodoTaskDraft,
   WindowPrefs,
 } from '../shared/contracts';
 import {
@@ -29,12 +30,17 @@ import {
 import {
   MAX_TODO_ITEMS,
   createTodoTask,
+  getTodoTaskTiming,
   hydrateStoredTodos,
+  reconcileTodoTasks,
   reorderTodoTasks,
+  resetTodoRuntimeState,
+  sanitizeTodoDraft,
 } from '../shared/todo';
 
 const APP_ID = 'com.shees.desktop-countdown-widget';
 const TIMER_STATE_CHANNEL = 'timer:state-changed';
+const TODO_STATE_CHANNEL = 'todo:state-changed';
 const WINDOW_CORNER_RADIUS = 36;
 const COMPLETION_HEARTBEAT_MS = 1_000;
 
@@ -56,7 +62,6 @@ let tray: Tray | null = null;
 let isQuitting = false;
 let completionTimer: NodeJS.Timeout | null = null;
 let completionHeartbeat: NodeJS.Timeout | null = null;
-let isEditingWindow = false;
 
 if (started) {
   app.quit();
@@ -104,16 +109,37 @@ function broadcastTimerState() {
   mainWindow?.webContents.send(TIMER_STATE_CHANNEL, getCurrentCountdownState());
 }
 
-function getStoredTodos() {
-  const normalized = hydrateStoredTodos(store.get('todos'));
-  store.set('todos', normalized);
-  return normalized;
+function reconcileStoredTodos(
+  countdown = getCurrentCountdownState(),
+  nowMs = Date.now(),
+) {
+  const hydrated = hydrateStoredTodos(store.get('todos'));
+  const reconciled = reconcileTodoTasks(hydrated, countdown, nowMs);
+
+  if (reconciled.changed) {
+    store.set('todos', reconciled.todos);
+  }
+
+  return reconciled;
 }
 
-function saveTodos(todos: TodoTask[]) {
-  const normalized = hydrateStoredTodos(todos);
-  store.set('todos', normalized);
-  return normalized;
+function broadcastTodos(todos = getStoredTodos()) {
+  mainWindow?.webContents.send(TODO_STATE_CHANNEL, todos);
+}
+
+function getStoredTodos() {
+  return reconcileStoredTodos().todos;
+}
+
+function saveTodos(
+  todos: TodoTask[],
+  countdown = getCurrentCountdownState(),
+  nowMs = Date.now(),
+) {
+  const hydrated = hydrateStoredTodos(todos);
+  const reconciled = reconcileTodoTasks(hydrated, countdown, nowMs);
+  store.set('todos', reconciled.todos);
+  return reconciled.todos;
 }
 
 function getDisplayForPoint(x: number, y: number) {
@@ -237,24 +263,6 @@ function persistWindowPrefs() {
   store.set('windowPrefs', clampWindowPrefs({ x, y }));
 }
 
-function applyWindowBounds() {
-  if (!mainWindow) {
-    return;
-  }
-
-  const currentPrefs = getStoredWindowPrefs();
-  const bounds = getWindowBounds(currentPrefs);
-
-  mainWindow.setBounds(bounds);
-  applyWindowShape();
-  store.set('windowPrefs', { x: bounds.x, y: bounds.y });
-}
-
-function applyEditingMode(editing: boolean) {
-  isEditingWindow = editing;
-  applyWindowBounds();
-}
-
 function showWindow() {
   if (!mainWindow) {
     return;
@@ -289,8 +297,8 @@ function showCompletionNotification() {
   }
 
   const notification = new Notification({
-    title: state.label ? `Finished: ${state.label}` : 'Countdown complete',
-    body: getNotificationBody(state),
+    title: 'Countdown complete',
+    body: getNotificationBody(),
     silent: false,
   });
 
@@ -327,14 +335,20 @@ function ensureCompletionHeartbeat() {
   }
 
   completionHeartbeat = setInterval(() => {
+    const nowMs = Date.now();
     const current = getCurrentCountdownState();
+    const reconciledTodos = reconcileStoredTodos(current, nowMs);
+
+    if (reconciledTodos.changed) {
+      broadcastTodos(reconciledTodos.todos);
+    }
 
     if (!current) {
       clearCompletionMonitors();
       return;
     }
 
-    if (Date.parse(current.targetAt) <= Date.now()) {
+    if (Date.parse(current.targetAt) <= nowMs) {
       markCountdownComplete();
     }
   }, COMPLETION_HEARTBEAT_MS);
@@ -426,8 +440,10 @@ function createTray() {
       label: 'Reset timer',
       click: async () => {
         store.set('countdown', null);
+        const nextTodos = saveTodos(resetTodoRuntimeState(hydrateStoredTodos(store.get('todos'))), null);
         clearCompletionMonitors();
         broadcastTimerState();
+        broadcastTodos(nextTodos);
       },
     },
     { type: 'separator' },
@@ -455,7 +471,6 @@ function loadRenderer(window: BrowserWindow) {
 }
 
 function createMainWindow() {
-  isEditingWindow = !getCurrentCountdownState();
   const prefs = getStoredWindowPrefs();
   const bounds = getWindowBounds(prefs);
 
@@ -491,6 +506,7 @@ function createMainWindow() {
     applyWindowShape();
     mainWindow?.show();
     broadcastTimerState();
+    broadcastTodos();
   });
 
   mainWindow.on('moved', persistWindowPrefs);
@@ -526,7 +542,6 @@ function registerIpcHandlers() {
     }
 
     const nextState: CountdownState = {
-      label: payload.label?.trim() || undefined,
       targetAt: new Date(targetMs).toISOString(),
       startedAt: new Date().toISOString(),
       durationMs: payload.durationMs,
@@ -535,7 +550,12 @@ function registerIpcHandlers() {
     };
 
     store.set('countdown', nextState);
+    const nextTodos = saveTodos(
+      resetTodoRuntimeState(hydrateStoredTodos(store.get('todos'))),
+      nextState,
+    );
     broadcastTimerState();
+    broadcastTodos(nextTodos);
     armCompletionTimer();
     showWindow();
 
@@ -545,23 +565,148 @@ function registerIpcHandlers() {
   ipcMain.handle('timer:reset', async () => {
     clearCompletionMonitors();
     store.set('countdown', null);
+    const nextTodos = saveTodos(
+      resetTodoRuntimeState(hydrateStoredTodos(store.get('todos'))),
+      null,
+    );
     broadcastTimerState();
+    broadcastTodos(nextTodos);
   });
 
-  ipcMain.handle('todo:add', async (_event, title: unknown) => {
+  ipcMain.handle('todo:create', async (_event, draft: TodoTaskDraft) => {
     const current = getStoredTodos();
 
     if (current.length >= MAX_TODO_ITEMS) {
       throw new Error('Only 3 tasks allowed.');
     }
 
-    const nextTask = createTodoTask(title, randomUUID());
+    const nextTask = createTodoTask(draft, randomUUID());
 
     if (!nextTask) {
-      throw new Error('Enter a task first.');
+      throw new Error('Enter a valid task configuration.');
     }
 
-    return saveTodos([...current, nextTask]);
+    const nextTodos = saveTodos([...current, nextTask]);
+    broadcastTodos(nextTodos);
+    return nextTodos;
+  });
+
+  ipcMain.handle('todo:update', async (_event, id: unknown, draft: TodoTaskDraft) => {
+    if (typeof id !== 'string') {
+      throw new Error('Invalid task.');
+    }
+
+    const sanitizedDraft = sanitizeTodoDraft(draft);
+
+    if (!sanitizedDraft) {
+      throw new Error('Enter a valid task configuration.');
+    }
+
+    const current = getStoredTodos();
+    const existingTask = current.find((task) => task.id === id);
+
+    if (!existingTask) {
+      throw new Error('Task not found.');
+    }
+
+    const nextTodos = saveTodos(
+      current.map((task) => {
+        if (task.id !== id) {
+          return task;
+        }
+
+        const hasTimingConfig = Boolean(
+          sanitizedDraft.durationMs
+          && sanitizedDraft.plannedStartAt
+          && sanitizedDraft.overflowMode,
+        );
+
+        if (!hasTimingConfig) {
+          return {
+            ...task,
+            title: sanitizedDraft.title,
+            durationMs: undefined,
+            overflowMode: undefined,
+            startMode: undefined,
+            plannedStartAt: undefined,
+            actualStartedAt: undefined,
+          };
+        }
+
+        const plannedStartChanged = sanitizedDraft.plannedStartAt !== task.plannedStartAt;
+        const nextActualStartedAt = task.actualStartedAt
+          ? (plannedStartChanged ? sanitizedDraft.plannedStartAt : task.actualStartedAt)
+          : undefined;
+
+        return {
+          ...task,
+          title: sanitizedDraft.title,
+          durationMs: sanitizedDraft.durationMs,
+          overflowMode: sanitizedDraft.overflowMode,
+          startMode: 'scheduled',
+          plannedStartAt: sanitizedDraft.plannedStartAt,
+          actualStartedAt: nextActualStartedAt,
+        };
+      }),
+    );
+    broadcastTodos(nextTodos);
+    return nextTodos;
+  });
+
+  ipcMain.handle('todo:startNow', async (_event, id: unknown) => {
+    if (typeof id !== 'string') {
+      throw new Error('Invalid task.');
+    }
+
+    const countdown = getCurrentCountdownState();
+
+    if (!countdown) {
+      throw new Error('Start the global timer first.');
+    }
+
+    const current = getStoredTodos();
+    const task = current.find((item) => item.id === id);
+
+    if (!task) {
+      throw new Error('Task not found.');
+    }
+
+    const timing = getTodoTaskTiming(task, countdown, Date.now());
+
+    if (timing.status === 'needs_setup') {
+      throw new Error('Set up the task schedule first.');
+    }
+
+    if (timing.status === 'invalid') {
+      throw new Error(timing.invalidReason ?? 'This task no longer fits the current session.');
+    }
+
+    if (timing.status === 'overdue') {
+      throw new Error('This task is already overdue.');
+    }
+
+    if (timing.status === 'active' || timing.status === 'completed') {
+      throw new Error('This task has already started.');
+    }
+
+    if (timing.status !== 'scheduled') {
+      throw new Error('This task cannot be started right now.');
+    }
+
+    const startedAt = new Date().toISOString();
+    const nextTodos = saveTodos(
+      current.map((item) => (
+        item.id === id
+          ? {
+              ...item,
+              actualStartedAt: startedAt,
+            }
+          : item
+      )),
+      countdown,
+    );
+    broadcastTodos(nextTodos);
+    return nextTodos;
   });
 
   ipcMain.handle('todo:reorder', async (_event, orderedIds: unknown) => {
@@ -569,7 +714,9 @@ function registerIpcHandlers() {
       throw new Error('Invalid task order.');
     }
 
-    return saveTodos(reorderTodoTasks(getStoredTodos(), orderedIds));
+    const nextTodos = saveTodos(reorderTodoTasks(getStoredTodos(), orderedIds));
+    broadcastTodos(nextTodos);
+    return nextTodos;
   });
 
   ipcMain.handle('todo:toggle', async (_event, id: unknown) => {
@@ -578,17 +725,21 @@ function registerIpcHandlers() {
     }
 
     const current = getStoredTodos();
+    const completedAt = new Date().toISOString();
 
-    return saveTodos(
+    const nextTodos = saveTodos(
       current.map((task) => (
         task.id === id
           ? {
               ...task,
               completed: !task.completed,
+              completedAt: task.completed ? undefined : completedAt,
             }
           : task
       )),
     );
+    broadcastTodos(nextTodos);
+    return nextTodos;
   });
 
   ipcMain.handle('todo:remove', async (_event, id: unknown) => {
@@ -596,11 +747,9 @@ function registerIpcHandlers() {
       throw new Error('Invalid task.');
     }
 
-    return saveTodos(getStoredTodos().filter((task) => task.id !== id));
-  });
-
-  ipcMain.handle('window:setEditingMode', async (_event, isEditing: boolean) => {
-    applyEditingMode(isEditing);
+    const nextTodos = saveTodos(getStoredTodos().filter((task) => task.id !== id));
+    broadcastTodos(nextTodos);
+    return nextTodos;
   });
 
   ipcMain.handle('window:minimizeToTray', async () => {

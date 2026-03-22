@@ -5,6 +5,7 @@ import type {
   CountdownState,
   CountdownWidgetApi,
   TodoTask,
+  TodoTaskDraft,
 } from '../shared/contracts';
 
 const api: CountdownWidgetApi = {
@@ -13,13 +14,14 @@ const api: CountdownWidgetApi = {
   start: (payload: CountdownStartPayload) =>
     ipcRenderer.invoke('timer:start', payload) as Promise<CountdownState>,
   reset: () => ipcRenderer.invoke('timer:reset') as Promise<void>,
-  addTodo: (title: string) => ipcRenderer.invoke('todo:add', title) as Promise<TodoTask[]>,
+  createTodo: (draft: TodoTaskDraft) => ipcRenderer.invoke('todo:create', draft) as Promise<TodoTask[]>,
+  updateTodo: (id: string, draft: TodoTaskDraft) =>
+    ipcRenderer.invoke('todo:update', id, draft) as Promise<TodoTask[]>,
+  startTodoNow: (id: string) => ipcRenderer.invoke('todo:startNow', id) as Promise<TodoTask[]>,
   reorderTodos: (orderedIds: string[]) =>
     ipcRenderer.invoke('todo:reorder', orderedIds) as Promise<TodoTask[]>,
   toggleTodo: (id: string) => ipcRenderer.invoke('todo:toggle', id) as Promise<TodoTask[]>,
   removeTodo: (id: string) => ipcRenderer.invoke('todo:remove', id) as Promise<TodoTask[]>,
-  setEditingMode: (isEditing: boolean) =>
-    ipcRenderer.invoke('window:setEditingMode', isEditing) as Promise<void>,
   minimizeToTray: () => ipcRenderer.invoke('window:minimizeToTray') as Promise<void>,
   restore: () => ipcRenderer.invoke('app:restore') as Promise<void>,
   quit: () => ipcRenderer.invoke('app:quit') as Promise<void>,
@@ -32,6 +34,17 @@ const api: CountdownWidgetApi = {
 
     return () => {
       ipcRenderer.removeListener('timer:state-changed', listener);
+    };
+  },
+  onTodosChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, tasks: TodoTask[]) => {
+      callback(tasks);
+    };
+
+    ipcRenderer.on('todo:state-changed', listener);
+
+    return () => {
+      ipcRenderer.removeListener('todo:state-changed', listener);
     };
   },
 };

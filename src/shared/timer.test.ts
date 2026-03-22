@@ -12,7 +12,7 @@ import type { CountdownState } from './contracts';
 
 describe('timer helpers', () => {
   it('builds a duration payload from hours and minutes', () => {
-    const payload = buildDurationPayload(2, 30, 'Focus block', 0);
+    const payload = buildDurationPayload(2, 30, 0);
 
     expect(payload.mode).toBe('duration');
     expect(payload.durationMs).toBe(9_000_000);
@@ -21,7 +21,6 @@ describe('timer helpers', () => {
 
   it('marks expired persisted state as completed during hydration', () => {
     const state: CountdownState = {
-      label: 'Deck',
       startedAt: '2026-03-21T10:00:00.000Z',
       targetAt: '2026-03-21T11:00:00.000Z',
       durationMs: 3_600_000,

@@ -38,27 +38,14 @@ export function durationToMs(hours: number, minutes: number): number {
 export function buildDurationPayload(
   hours: number,
   minutes: number,
-  label: string,
   nowMs: number,
 ): CountdownStartPayload {
   const durationMs = durationToMs(hours, minutes);
 
   return {
-    label: label.trim() || undefined,
     mode: 'duration',
     durationMs,
     targetAt: new Date(nowMs + durationMs).toISOString(),
-  };
-}
-
-export function buildDatetimePayload(
-  localDateTimeValue: string,
-  label: string,
-): CountdownStartPayload {
-  return {
-    label: label.trim() || undefined,
-    mode: 'datetime',
-    targetAt: new Date(localDateTimeValue).toISOString(),
   };
 }
 
@@ -165,11 +152,7 @@ export function getTimerDelayMs(
   return Math.min(remainingMs, MAX_TIMER_DELAY);
 }
 
-export function getNotificationBody(state: CountdownState | null): string {
-  if (state?.label) {
-    return `${state.label} is done.`;
-  }
-
+export function getNotificationBody(): string {
   return TIMER_COMPLETION_BODY;
 }
 
@@ -198,36 +181,39 @@ export function formatCountdown(remainingMs: number): string {
   ].join(':');
 }
 
-export function formatTargetLabel(targetAt: string, nowMs = Date.now()): string {
-  const target = new Date(targetAt);
-  const now = new Date(nowMs);
-  const sameDay = target.toDateString() === now.toDateString();
-
-  const time = new Intl.DateTimeFormat(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(target);
-
-  if (sameDay) {
-    return `Today, ${time}`;
+export function describeDuration(ms: number): string {
+  if (ms <= 0) {
+    return '0m';
   }
 
-  const date = new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-  }).format(target);
+  const totalMinutes = Math.max(1, Math.ceil(ms / 60_000));
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+  const parts: string[] = [];
 
-  return `${date}, ${time}`;
+  if (days > 0) {
+    parts.push(`${days}d`);
+  }
+
+  if (hours > 0) {
+    parts.push(`${hours}h`);
+  }
+
+  if (minutes > 0 || parts.length === 0) {
+    parts.push(`${minutes}m`);
+  }
+
+  return parts.slice(0, 2).join(' ');
 }
 
-export function toDateTimeLocalValue(date: Date): string {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  const hours = `${date.getHours()}`.padStart(2, '0');
-  const minutes = `${date.getMinutes()}`.padStart(2, '0');
-
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+export function formatEditorialTarget(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
 }
 
 export function isValidStartPayload(payload: CountdownStartPayload): boolean {
